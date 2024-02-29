@@ -1,0 +1,4 @@
+toml~=0.10.2
+fastapi~=0.110.0
+pydantic~=2.6.3
+playwright~=1.41.2
