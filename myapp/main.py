@@ -38,6 +38,14 @@ class Url(BaseModel):
     filename: str = Field(None, description="希望保存的文件名，选填。默认为当前时间戳。")
 
 
+class Grafana(BaseModel):
+    url: str = Field(None, description="Grafana Page 的链接，必填")
+    width: int = Field(1920, description="生成的图片宽度，仅转换图片时生效")
+    height: int = Field(1080, description="生成的图片高度，仅转换图片时生效")
+    filename: str = Field(None, description="希望保存的文件名，选填。默认为当前时间戳。")
+    token: str = Field(None, description="Grafana的访问token，必填。可以使用服务账户生成。")
+
+
 class Result(BaseModel):
     url: str = Field(None, description="生成文件的下载链接")
     filename: str = Field(None, description="生成文件的文件名")
@@ -141,6 +149,36 @@ async def url2img(url: Url):
         await page.wait_for_load_state('networkidle')
 
         await page.evaluate(url.javascript.replace("\\n", ""))
+        await page.wait_for_load_state('networkidle')
+
+        await page.screenshot(path=file_path, full_page=True, type="png")
+        await browser.close()
+
+    Result.url = f"http://{access_address}/tmp/png/{Result.filename}.png"
+    logging.info(Result.url)
+
+    return Result
+
+
+@app.post("/grafana2png", tags=["Grafana"], summary='Grafana 仪表盘转 PNG 图片', response_model=Result)
+async def grafana2png(grafana_page: Grafana):
+    logging.info(f"Convert {grafana_page.url} to png...")
+    Result.filename = grafana_page.filename if grafana_page.filename else str(time.time_ns())
+
+    file_path = f"tmp/png/{Result.filename}.png"
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch()
+        page = await browser.new_page()
+
+        # 设置鉴权头部
+        authorization_header = {"Authorization": f"Bearer {grafana_page.token}"}
+        await page.set_extra_http_headers(authorization_header)
+
+        await page.set_viewport_size({"width": grafana_page.width, "height": grafana_page.height})
+
+        await page.goto(grafana_page.url)
         await page.wait_for_load_state('networkidle')
 
         await page.screenshot(path=file_path, full_page=True, type="png")
